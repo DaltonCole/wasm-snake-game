@@ -1,12 +1,14 @@
+use crate::document;
 use crate::get_canvas;
 use crate::get_canvas_context;
 use crate::request_animation_frame;
 use crate::window;
+use js_sys::Math::random;
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::Mutex;
-
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 use web_sys::EventListener;
@@ -56,7 +58,7 @@ pub struct SnakeGame {
     width: u16,
     height: u16,
     food: Option<Coordinate>,
-    snake: Vec<Coordinate>,
+    snake: VecDeque<Coordinate>,
     direction: Direction,
 }
 
@@ -68,18 +70,85 @@ impl Default for SnakeGame {
 
 impl SnakeGame {
     pub fn new(width: u16, height: u16) -> SnakeGame {
-        SnakeGame {
+        let mut snake = SnakeGame {
             width,
             height,
             //food: None,
             food: Some(Coordinate::new(5, 5)),
-            snake: vec![
+            snake: VecDeque::from([
                 Coordinate::new(0, 0),
                 Coordinate::new(1, 0),
                 Coordinate::new(2, 0),
-            ],
+            ]),
             direction: Direction::East,
+        };
+
+        Self::grow_food(&mut snake);
+        snake
+    }
+
+    fn grow_food(snake: &mut SnakeGame) {
+        let x = (random() * snake.width as f64) as u16;
+        let y = (random() * snake.height as f64) as u16;
+
+        snake.food = Some(Coordinate::new(x, y));
+    }
+
+    /// Moves the snake
+    ///
+    /// Returns:
+    ///     True if the snake successfully moved
+    ///     False if the snake ran into its self and died
+    pub fn move_snake(&mut self) -> bool {
+        // Get snakes head
+        let head = self.snake.back().unwrap();
+
+        // Find new head position
+        let new_head = match self.direction {
+            Direction::East => {
+                // Go Right
+                Coordinate::new((head.x + 1) % self.width, head.y)
+            }
+            Direction::West => {
+                // Go left
+                Coordinate::new((head.x + self.width - 1) % self.width, head.y)
+            }
+            Direction::North => {
+                // Go Up
+                Coordinate::new(head.x, (head.y + self.height - 1) % self.height)
+            }
+            Direction::South => {
+                // Go Right
+                Coordinate::new(head.x, (head.y + 1) % self.height)
+            }
+        };
+
+        // See if we're over the food
+        if new_head == self.food.unwrap() {
+            Self::grow_food(self);
+        } else {
+            self.snake.pop_front();
         }
+        self.snake.push_back(new_head);
+
+        // See if we've consumed ourselves
+        for i in 0..self.snake.len() {
+            for j in 0..self.snake.len() {
+                if i != j && self.snake[i] == self.snake[j] {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
+    pub fn get_score(&self) -> usize {
+        self.snake.len()
+    }
+
+    pub fn snake_head(&self) -> Coordinate {
+        self.snake.back().unwrap().clone()
     }
 }
 
@@ -106,36 +175,25 @@ pub fn key_press(snake: &Rc<Mutex<SnakeGame>>) -> Result<(), JsValue> {
             match event.key_code() {
                 37 => {
                     // Left key press
-                    console::log_1(
-                        &format!("Old Direction: {:?}", snake.lock().unwrap().direction).into(),
-                    );
                     snake.lock().unwrap().direction = Direction::West;
                 }
                 38 => {
                     // Up key press
-                    console::log_1(
-                        &format!("Old Direction: {:?}", snake.lock().unwrap().direction).into(),
-                    );
                     snake.lock().unwrap().direction = Direction::North;
                 }
                 39 => {
                     // Right key press
-                    console::log_1(
-                        &format!("Old Direction: {:?}", snake.lock().unwrap().direction).into(),
-                    );
                     snake.lock().unwrap().direction = Direction::East;
                 }
                 40 => {
                     // Down key press
-                    console::log_1(
-                        &format!("Old Direction: {:?}", snake.lock().unwrap().direction).into(),
-                    );
                     snake.lock().unwrap().direction = Direction::South;
                 }
                 _ => {
                     console::log_1(&format!("{:?}", event.value_of()).into());
                 }
             }
+            console::log_1(&format!("Direction: {:?}", snake.lock().unwrap().direction).into());
         });
         window.add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref())?;
         closure.forget();
@@ -200,11 +258,22 @@ pub fn update_game(snake: &Rc<Mutex<SnakeGame>>) -> Result<(), JsValue> {
         // Move f into closure so closure is not dropped
         let _ = f;
         i += 1;
-        console::log_1(&format!("Tick #{}", i).into());
+        //console::log_1(&format!("Tick #{}", i).into());
+
+        // Move the snake
+        our_snake.lock().unwrap().move_snake();
+
+        console::log_1(&format!("{:?}", our_snake.lock().unwrap().snake_head()).into());
+
+        // Update the score
+        let p = document().get_element_by_id("score").unwrap();
+        let p: web_sys::Node = p.dyn_into::<web_sys::Node>().map_err(|_| ()).unwrap();
+        let text = format!("Score: {}", our_snake.lock().unwrap().get_score());
+        p.set_text_content(Some(&text));
     }));
 
     //request_animation_frame(g.borrow().as_ref().unwrap());
-    setInterval(g.borrow().as_ref().unwrap(), 1_000);
+    setInterval(g.borrow().as_ref().unwrap(), 0_250);
 
     Ok(())
 }
@@ -217,15 +286,29 @@ pub fn render(snake: SnakeGame) -> Result<(), JsValue> {
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
 
+    let window = window();
+    let canvas = get_canvas();
+    canvas.set_width(window.outer_width().unwrap().as_f64().unwrap() as u32);
+    canvas.set_height(window.outer_height().unwrap().as_f64().unwrap() as u32);
+
     *g.borrow_mut() = Some(Closure::new(move || {
+        // Constants
+        let cell_size = 5;
+        let width = snake.lock().unwrap().width;
+        let height = snake.lock().unwrap().height;
+
         // Get canvas
         let context = get_canvas_context();
 
-        // --- Draw grid --- //
-        let cell_size = 5;
-        let width = snake.lock().unwrap().width;
-        let height = snake.lock().unwrap().height * cell_size;
+        // Clear canvas TODO: Clear out the snake's tail
+        context.clear_rect(
+            0.0,
+            0.0,
+            ((cell_size + 1) * width + 1) as f64,
+            (((cell_size + 1) * height) + 1) as f64,
+        );
 
+        // --- Draw grid --- //
         context.begin_path();
 
         // Add vertical lines
@@ -234,7 +317,7 @@ pub fn render(snake: SnakeGame) -> Result<(), JsValue> {
             context.move_to(((x * (cell_size + 1)) + 1) as f64, 0.0);
             context.line_to(
                 ((x * (cell_size + 1)) + 1) as f64,
-                ((cell_size + 1) * height + 1) as f64,
+                (((cell_size + 1) * height) + 1) as f64,
             );
         }
 
@@ -264,7 +347,7 @@ pub fn render(snake: SnakeGame) -> Result<(), JsValue> {
         // Draw snake head
         context.begin_path();
         context.set_fill_style(&JsValue::from_str("#32CD32"));
-        let head = snake.lock().unwrap().snake.last().unwrap().clone();
+        let head = snake.lock().unwrap().snake.back().unwrap().clone();
         context.fill_rect(
             (head.x * (cell_size + 1) + 1) as f64,
             (head.y * (cell_size + 1) + 1) as f64,

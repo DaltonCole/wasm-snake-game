@@ -127,7 +127,7 @@ fn main() -> Result<(), JsValue> {
     //happy_face();
 
     //let snake = SnakeGame::new(128, 128);
-    let mut snake = SnakeGame::new(32, 32);
+    let mut snake = SnakeGame::new(16, 16);
     //let _ = snake.key_press();
 
     let _ = render(snake);
