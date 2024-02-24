@@ -12,6 +12,24 @@ use web_sys::console;
 use web_sys::EventListener;
 use web_sys::{KeyboardEvent, MouseEvent};
 
+#[wasm_bindgen]
+extern "C" {
+    fn setInterval(closure: &Closure<dyn FnMut()>, time: u32) -> i32;
+    fn clearInterval(id: i32);
+}
+
+#[wasm_bindgen]
+pub struct IntervalHandle {
+    interval_id: i32,
+    _closure: Closure<dyn FnMut()>,
+}
+
+impl Drop for IntervalHandle {
+    fn drop(&mut self) {
+        clearInterval(self.interval_id);
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 struct Coordinate {
     x: u16,
@@ -170,9 +188,31 @@ pub fn key_press(snake: &Rc<Mutex<SnakeGame>>) -> Result<(), JsValue> {
 
     Ok(())
 }
+
+pub fn update_game(snake: &Rc<Mutex<SnakeGame>>) -> Result<(), JsValue> {
+    let f = Rc::new(RefCell::new(None));
+    let g = f.clone();
+
+    let our_snake = snake.clone();
+
+    let mut i = 0;
+    *g.borrow_mut() = Some(Closure::new(move || {
+        // Move f into closure so closure is not dropped
+        let _ = f;
+        i += 1;
+        console::log_1(&format!("Tick #{}", i).into());
+    }));
+
+    //request_animation_frame(g.borrow().as_ref().unwrap());
+    setInterval(g.borrow().as_ref().unwrap(), 1_000);
+
+    Ok(())
+}
+
 pub fn render(snake: SnakeGame) -> Result<(), JsValue> {
     let snake = Rc::new(Mutex::new(snake));
     key_press(&snake);
+    update_game(&snake);
 
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
