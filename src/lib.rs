@@ -75,8 +75,11 @@ pub fn count() -> Result<(), JsValue> {
 
     let mut i = 0;
     *g.borrow_mut() = Some(Closure::new(move || {
+        let p = document().get_element_by_id("render-text").unwrap();
+        let p: web_sys::Node = p.dyn_into::<web_sys::Node>().map_err(|_| ()).unwrap();
+
         if i > 300 {
-            body().set_text_content(Some("All Done!"));
+            p.set_text_content(Some("All Done"));
 
             // Drop f
             let _ = f.borrow_mut().take();
@@ -85,7 +88,7 @@ pub fn count() -> Result<(), JsValue> {
 
         i += 1;
         let text = format!("requestAnimationFrame has been called {} times", i);
-        body().set_text_content(Some(&text));
+        p.set_text_content(Some(&text));
 
         request_animation_frame(f.borrow().as_ref().unwrap());
     }));
