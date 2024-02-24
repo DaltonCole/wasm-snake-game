@@ -1,5 +1,9 @@
 extern crate console_error_panic_hook;
 
+mod snake_game;
+
+use snake_game::render;
+use snake_game::SnakeGame;
 use std::cell::RefCell;
 use std::f64;
 use std::panic;
@@ -18,6 +22,23 @@ fn document() -> web_sys::Document {
 
 fn body() -> web_sys::HtmlElement {
     document().body().expect("document should have a body")
+}
+
+fn get_canvas() -> web_sys::HtmlCanvasElement {
+    let canvas = document().get_element_by_id("canvas").unwrap();
+    canvas
+        .dyn_into::<web_sys::HtmlCanvasElement>()
+        .map_err(|_| ())
+        .unwrap()
+}
+
+fn get_canvas_context() -> web_sys::CanvasRenderingContext2d {
+    get_canvas()
+        .get_context("2d")
+        .unwrap()
+        .unwrap()
+        .dyn_into::<web_sys::CanvasRenderingContext2d>()
+        .unwrap()
 }
 
 fn request_animation_frame(f: &Closure<dyn FnMut()>) {
@@ -102,8 +123,14 @@ fn main() -> Result<(), JsValue> {
     // Print debug info to the console
     panic::set_hook(Box::new(console_error_panic_hook::hook));
 
-    happy_face();
-    count()?;
+    //count()?;
+    //happy_face();
+
+    //let snake = SnakeGame::new(128, 128);
+    let mut snake = SnakeGame::new(32, 32);
+    //let _ = snake.key_press();
+
+    let _ = render(snake);
 
     Ok(())
 }
