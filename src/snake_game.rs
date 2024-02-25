@@ -74,7 +74,7 @@ impl SnakeGame {
             width,
             height,
             //food: None,
-            food: Some(Coordinate::new(5, 5)),
+            food: None,
             snake: VecDeque::from([
                 Coordinate::new(0, 0),
                 Coordinate::new(1, 0),
@@ -85,6 +85,10 @@ impl SnakeGame {
 
         Self::grow_food(&mut snake);
         snake
+    }
+
+    fn get_all_possible_food_locations(&self) -> Vec<Coordinate> {
+        todo!()
     }
 
     fn grow_food(snake: &mut SnakeGame) {
@@ -143,6 +147,17 @@ impl SnakeGame {
         true
     }
 
+    pub fn reset(&mut self) {
+        self.snake = VecDeque::from([
+            Coordinate::new(0, 0),
+            Coordinate::new(1, 0),
+            Coordinate::new(2, 0),
+        ]);
+        self.direction = Direction::East;
+
+        Self::grow_food(self);
+    }
+
     pub fn get_score(&self) -> usize {
         self.snake.len()
     }
@@ -170,7 +185,6 @@ pub fn key_press(snake: &Rc<Mutex<SnakeGame>>) -> Result<(), JsValue> {
     // Key press
     {
         let snake = snake.clone();
-        //let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::KeyboardEvent| {
         let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::KeyboardEvent| {
             match event.key_code() {
                 37 => {
@@ -199,6 +213,23 @@ pub fn key_press(snake: &Rc<Mutex<SnakeGame>>) -> Result<(), JsValue> {
         closure.forget();
     }
 
+    // Restart Game Button
+    let button = document().get_element_by_id("restart").unwrap();
+    let button = button
+        .dyn_into::<web_sys::HtmlButtonElement>()
+        .map_err(|_| ())
+        .unwrap();
+    {
+        let snake = snake.clone();
+        let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::KeyboardEvent| {
+            snake.lock().unwrap().reset();
+        });
+
+        button.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())?;
+        closure.forget();
+    }
+
+    /*
     // Mouse down
     {
         let context = context.clone();
@@ -243,6 +274,7 @@ pub fn key_press(snake: &Rc<Mutex<SnakeGame>>) -> Result<(), JsValue> {
         canvas.add_event_listener_with_callback("mouseup", closure.as_ref().unchecked_ref())?;
         closure.forget();
     }
+    */
 
     Ok(())
 }
@@ -261,15 +293,36 @@ pub fn update_game(snake: &Rc<Mutex<SnakeGame>>) -> Result<(), JsValue> {
         //console::log_1(&format!("Tick #{}", i).into());
 
         // Move the snake
-        our_snake.lock().unwrap().move_snake();
+        let game_over = !our_snake.lock().unwrap().move_snake();
 
-        console::log_1(&format!("{:?}", our_snake.lock().unwrap().snake_head()).into());
+        console::log_1(&format!("Snake head: {:?}", our_snake.lock().unwrap().snake_head()).into());
+
+        if game_over {
+            our_snake.lock().unwrap().reset();
+        }
 
         // Update the score
-        let p = document().get_element_by_id("score").unwrap();
-        let p: web_sys::Node = p.dyn_into::<web_sys::Node>().map_err(|_| ()).unwrap();
-        let text = format!("Score: {}", our_snake.lock().unwrap().get_score());
-        p.set_text_content(Some(&text));
+        let score = document().get_element_by_id("score").unwrap();
+        let score: web_sys::Node = score.dyn_into::<web_sys::Node>().map_err(|_| ()).unwrap();
+        let current_score = our_snake.lock().unwrap().get_score();
+        let text = format!("{}", current_score);
+        score.set_text_content(Some(&text));
+
+        // Update the high-score
+        let high_score_element = document().get_element_by_id("high-score").unwrap();
+        let high_score_element: web_sys::Node = high_score_element
+            .dyn_into::<web_sys::Node>()
+            .map_err(|_| ())
+            .unwrap();
+        let high_score = high_score_element
+            .text_content()
+            .unwrap()
+            .parse::<usize>()
+            .unwrap();
+        if current_score > high_score {
+            let text = format!("{}", current_score);
+            high_score_element.set_text_content(Some(&text));
+        }
     }));
 
     //request_animation_frame(g.borrow().as_ref().unwrap());
@@ -286,10 +339,12 @@ pub fn render(snake: SnakeGame) -> Result<(), JsValue> {
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
 
+    /*
     let window = window();
     let canvas = get_canvas();
     canvas.set_width(window.outer_width().unwrap().as_f64().unwrap() as u32);
     canvas.set_height(window.outer_height().unwrap().as_f64().unwrap() as u32);
+    */
 
     *g.borrow_mut() = Some(Closure::new(move || {
         // Constants
